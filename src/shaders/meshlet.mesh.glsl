@@ -8,6 +8,8 @@
 
 #extension GL_ARB_shader_draw_parameters: require
 
+#extension GL_KHR_shader_subgroup_ballot: require
+
 #include "mesh.h"
 
 #define DEBUG 0
@@ -63,6 +65,29 @@ uint hash(uint a)
    return a;
 }
 
+uint getIndex(uint indexOffset, uint i)
+{
+	return (meshletData[indexOffset + i/4] >> 8*(i%4)) & 0xff;
+}
+
+uvec3 getTriIndices(uint indexOffset, uint tri)
+{
+	return uvec3(
+		getIndex(indexOffset, tri*3+0),
+		getIndex(indexOffset, tri*3+1),
+		getIndex(indexOffset, tri*3+2)
+	);
+}
+
+bool isTriVisible(uvec3 indices)
+{
+	vec3 v0 = gl_MeshVerticesNV[indices[0]].gl_Position.xyw;
+	vec3 v1 = gl_MeshVerticesNV[indices[1]].gl_Position.xyw;
+	vec3 v2 = gl_MeshVerticesNV[indices[2]].gl_Position.xyw;
+	return determinant(mat3(v0, v1, v2)) < 0;
+}
+
+shared uint sharedCounter;
 void main()
 {
 	uint ti = gl_LocalInvocationID.x;
@@ -100,13 +125,60 @@ void main()
 	#endif
 	}
 
-	uint indexGroupCount = (indexCount + 3) / 4;
+#define METHOD 2
 
+#if METHOD==0
+
+	uint indexGroupCount = (indexCount + 3) / 4;
 	for (uint i = ti; i < indexGroupCount; i += 32)
 	{
-		writePackedPrimitiveIndices4x8NV(i * 4, meshletData[indexOffset + i]);
+		uint indicesPacked = meshletData[indexOffset + i];
+		writePackedPrimitiveIndices4x8NV(i * 4, indicesPacked);		
+	}
+	if (ti == 0)
+		gl_PrimitiveCountNV = uint(meshlets[mi].triangleCount);
+
+#elif METHOD==1
+
+	if (ti == 0) sharedCounter = 0;
+
+	for (uint tri = ti; tri < triangleCount; tri += 32)
+	{
+		uvec3 indices = getTriIndices(indexOffset, tri);
+		bool isVisible = isTriVisible(indices);
+		if (isVisible)
+		{
+			uint writePos = atomicAdd(sharedCounter, 1);
+			gl_PrimitiveIndicesNV[writePos*3+0] = indices[0];
+			gl_PrimitiveIndicesNV[writePos*3+1] = indices[1];
+			gl_PrimitiveIndicesNV[writePos*3+2] = indices[2];
+		}
 	}
 
 	if (ti == 0)
-		gl_PrimitiveCountNV = uint(meshlets[mi].triangleCount);
+		gl_PrimitiveCountNV = sharedCounter;
+
+#elif METHOD==2
+
+	uint visibleTriCount = 0;
+	for (uint tri = ti; tri < triangleCount; tri += 32)
+	{
+		uvec3 indices = getTriIndices(indexOffset, tri);
+		bool isVisible = isTriVisible(indices);
+		uvec4 isVisibleMask = subgroupBallot(isVisible);
+		uint localIndex = subgroupBallotExclusiveBitCount(isVisibleMask);
+		if (isVisible)
+		{
+			uint writePos = visibleTriCount + localIndex;
+			gl_PrimitiveIndicesNV[writePos*3+0] = indices[0];
+			gl_PrimitiveIndicesNV[writePos*3+1] = indices[1];
+			gl_PrimitiveIndicesNV[writePos*3+2] = indices[2];
+		}
+		visibleTriCount += subgroupBallotBitCount(isVisibleMask);
+	}
+
+	if (ti == 0)
+		gl_PrimitiveCountNV = visibleTriCount;
+
+#endif
 }

@@ -19,11 +19,13 @@
 
 bool meshShadingEnabled = true;
 bool cullingEnabled = true;
-bool lodEnabled = true;
+bool lodEnabled = false; //true;
 bool occlusionEnabled = true;
 
 bool debugPyramid = false;
 int debugPyramidLevel = 0;
+
+double accumGpuMin = FLT_MAX;
 
 VkSemaphore createSemaphore(VkDevice device)
 {
@@ -363,6 +365,8 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 {
 	if (action == GLFW_PRESS)
 	{
+		accumGpuMin = FLT_MAX;
+
 		if (key == GLFW_KEY_R)
 		{
 			meshShadingEnabled = !meshShadingEnabled;
@@ -1156,13 +1160,14 @@ int main(int argc, const char** argv)
 
 		frameCpuAvg = frameCpuAvg * 0.95 + (frameCpuEnd - frameCpuBegin) * 0.05;
 		frameGpuAvg = frameGpuAvg * 0.95 + (frameGpuEnd - frameGpuBegin) * 0.05;
+		accumGpuMin = std::min(accumGpuMin, frameGpuEnd - frameGpuBegin);
 
 		double trianglesPerSec = double(triangleCount) / double(frameGpuAvg * 1e-3);
 		double drawsPerSec = double(drawCount) / double(frameGpuAvg * 1e-3);
 
 		char title[256];
-		sprintf(title, "cpu: %.2f ms; gpu: %.2f ms (cull: %.2f ms, pyramid: %.2f ms, cull late: %.2f); triangles %.1fM; %.1fB tri/sec, %.1fM draws/sec; mesh shading %s, frustum culling %s, occlusion culling %s, level-of-detail %s",
-			frameCpuAvg, frameGpuAvg, cullGpuTime, pyramidGpuTime, culllateGpuTime,
+		sprintf(title, "cpu: %.2f ms; gpu: %.2f [min %.2f] ms (cull: %.2f ms, pyramid: %.2f ms, cull late: %.2f); triangles %.1fM; %.1fB tri/sec, %.1fM draws/sec; mesh shading %s, frustum culling %s, occlusion culling %s, level-of-detail %s",
+			frameCpuAvg, frameGpuAvg, accumGpuMin, cullGpuTime, pyramidGpuTime, culllateGpuTime,
 			double(triangleCount) * 1e-6, trianglesPerSec * 1e-9, drawsPerSec * 1e-6,
 			meshShadingSupported && meshShadingEnabled ? "ON" : "OFF", cullingEnabled ? "ON" : "OFF", occlusionEnabled ? "ON" : "OFF", lodEnabled ? "ON" : "OFF");
 
