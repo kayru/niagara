@@ -81,10 +81,20 @@ uvec3 getTriIndices(uint indexOffset, uint tri)
 
 bool isTriVisible(uvec3 indices)
 {
+#if 0
 	vec3 v0 = gl_MeshVerticesNV[indices[0]].gl_Position.xyw;
 	vec3 v1 = gl_MeshVerticesNV[indices[1]].gl_Position.xyw;
 	vec3 v2 = gl_MeshVerticesNV[indices[2]].gl_Position.xyw;
 	return determinant(mat3(v0, v1, v2)) < 0;
+#else
+	vec4 v0 = gl_MeshVerticesNV[indices[0]].gl_Position;
+	vec4 v1 = gl_MeshVerticesNV[indices[1]].gl_Position;
+	vec4 v2 = gl_MeshVerticesNV[indices[2]].gl_Position;
+	v0.xyz /= v0.w;
+	v1.xyz /= v1.w;
+	v2.xyz /= v2.w;
+	return cross(v1.xyz-v0.xyz, v2.xyz-v0.xyz).z < 0;
+#endif
 }
 
 shared uint sharedCounter;
