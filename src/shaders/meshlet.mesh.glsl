@@ -79,6 +79,11 @@ uvec3 getTriIndices(uint indexOffset, uint tri)
 	);
 }
 
+float pseudoCross(vec2 a, vec2 b)
+{
+	return a.x * b.y - a.y * b.x;
+}
+
 bool isTriVisible(uvec3 indices)
 {
 #if 0
@@ -90,10 +95,9 @@ bool isTriVisible(uvec3 indices)
 	vec4 v0 = gl_MeshVerticesNV[indices[0]].gl_Position;
 	vec4 v1 = gl_MeshVerticesNV[indices[1]].gl_Position;
 	vec4 v2 = gl_MeshVerticesNV[indices[2]].gl_Position;
-	v0.xyz /= v0.w;
-	v1.xyz /= v1.w;
-	v2.xyz /= v2.w;
-	return cross(v1.xyz-v0.xyz, v2.xyz-v0.xyz).z < 0;
+	return pseudoCross(
+		v1.xy/v1.w - v0.xy/v0.w,
+		v2.xy/v2.w - v0.xy/v0.w) < 0;
 #endif
 }
 
